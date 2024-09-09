@@ -52,8 +52,14 @@ The data we used are parsed from Onshape public documents with links from [ABC d
 ## Training
 See all hyper-parameters and configurations under `config` folder. To train the autoencoder:
 
+GPU:
 ```bash
-$ python train.py --exp_name newDeepCAD -g 0
+python train.py --exp_name newDeepCAD -g -1 --use_cpu False
+```
+
+CPU:
+```bash
+python train.py --exp_name newDeepCAD -g -1 --use_cpu True
 ```
 
 For random generation, further train a latent GAN:

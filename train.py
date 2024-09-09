@@ -5,11 +5,13 @@ from dataset.cad_dataset import get_dataloader
 from config import ConfigAE
 from utils import cycle
 from trainer import TrainerAE
+import torch
 
 
 def main():
+
     # create experiment cfg containing all hyperparameters
-    cfg = ConfigAE('train')
+    cfg = ConfigAE("train")
 
     # create network and training agent
     tr_agent = TrainerAE(cfg)
@@ -19,9 +21,9 @@ def main():
         tr_agent.load_ckpt(cfg.ckpt)
 
     # create dataloader
-    train_loader = get_dataloader('train', cfg)
-    val_loader = get_dataloader('validation', cfg)
-    val_loader_all = get_dataloader('validation', cfg)
+    train_loader = get_dataloader("train", cfg)
+    val_loader = get_dataloader("validation", cfg)
+    val_loader_all = get_dataloader("validation", cfg)
     val_loader = cycle(val_loader)
 
     # start training
@@ -55,8 +57,8 @@ def main():
             tr_agent.save_ckpt()
 
         # if clock.epoch % 10 == 0:
-        tr_agent.save_ckpt('latest')
+        tr_agent.save_ckpt("latest")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

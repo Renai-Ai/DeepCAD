@@ -4,6 +4,7 @@ import numpy as np
 import h5py
 from joblib import Parallel, delayed
 import sys
+
 sys.path.append("..")
 from cadlib.extrude import CADSequence
 from cadlib.macro import *
@@ -27,7 +28,9 @@ def process_one(data_id):
         cad_seq = CADSequence.from_dict(data)
         cad_seq.normalize()
         cad_seq.numericalize()
-        cad_vec = cad_seq.to_vector(MAX_N_EXT, MAX_N_LOOPS, MAX_N_CURVES, MAX_TOTAL_LEN, pad=False)
+        cad_vec = cad_seq.to_vector(
+            MAX_N_EXT, MAX_N_LOOPS, MAX_N_CURVES, MAX_TOTAL_LEN, pad=False
+        )
 
     except Exception as e:
         print("failed:", data_id)
@@ -42,8 +45,8 @@ def process_one(data_id):
     if not os.path.exists(truck_dir):
         os.makedirs(truck_dir)
 
-    with h5py.File(save_path, 'w') as fp:
-        fp.create_dataset("vec", data=cad_vec, dtype=np.int)
+    with h5py.File(save_path, "w") as fp:
+        fp.create_dataset("vec", data=cad_vec, dtype=int)
 
 
 with open(RECORD_FILE, "r") as fp:

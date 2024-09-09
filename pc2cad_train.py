@@ -12,6 +12,7 @@ import json
 import random
 from plyfile import PlyData, PlyElement
 import sys
+
 sys.path.append("..")
 from agent import BaseAgent
 from pointnet2_ops.pointnet2_modules import PointnetFPModule, PointnetSAModule
@@ -19,11 +20,13 @@ from plyfile import PlyData, PlyElement
 
 
 def write_ply(points, filename, text=False):
-    """ input: Nx3, write points to filename as PLY format. """
-    points = [(points[i,0], points[i,1], points[i,2]) for i in range(points.shape[0])]
-    vertex = np.array(points, dtype=[('x', 'f4'), ('y', 'f4'),('z', 'f4')])
-    el = PlyElement.describe(vertex, 'vertex', comments=['vertices'])
-    with open(filename, mode='wb') as f:
+    """input: Nx3, write points to filename as PLY format."""
+    points = [
+        (points[i, 0], points[i, 1], points[i, 2]) for i in range(points.shape[0])
+    ]
+    vertex = np.array(points, dtype=[("x", "f4"), ("y", "f4"), ("z", "f4")])
+    el = PlyElement.describe(vertex, "vertex", comments=["vertices"])
+    with open(filename, mode="wb") as f:
         PlyData([el], text=text).write(f)
 
 
@@ -42,22 +45,30 @@ class Config(object):
     val_frequency = 10
 
     def __init__(self, args):
-        self.data_root = os.path.join(args.proj_dir, args.exp_name, "results/all_zs_ckpt{}.h5".format(args.ae_ckpt))
-        self.exp_dir = os.path.join(args.proj_dir, args.exp_name, "pc2cad_tune_noise{}_{}_new".format(self.n_points, self.noise))
+        self.data_root = os.path.join(
+            args.proj_dir,
+            args.exp_name,
+            "results/all_zs_ckpt{}.h5".format(args.ae_ckpt),
+        )
+        self.exp_dir = os.path.join(
+            args.proj_dir,
+            args.exp_name,
+            "pc2cad_tune_noise{}_{}_new".format(self.n_points, self.noise),
+        )
         print(self.exp_dir)
-        self.log_dir = os.path.join(self.exp_dir, 'log')
-        self.model_dir = os.path.join(self.exp_dir, 'model')
+        self.log_dir = os.path.join(self.exp_dir, "log")
+        self.model_dir = os.path.join(self.exp_dir, "model")
         self.gpu_ids = args.gpu_ids
 
         if (not args.test) and args.cont is not True and os.path.exists(self.exp_dir):
-            response = input('Experiment log/model already exists, overwrite? (y/n) ')
-            if response != 'y':
+            response = input("Experiment log/model already exists, overwrite? (y/n) ")
+            if response != "y":
                 exit()
             shutil.rmtree(self.exp_dir)
         ensure_dirs([self.log_dir, self.model_dir])
         if not args.test:
             os.system("cp pc2cad.py {}".format(self.exp_dir))
-            with open('{}/config.txt'.format(self.exp_dir), 'w') as f:
+            with open("{}/config.txt".format(self.exp_dir), "w") as f:
                 json.dump(self.__dict__, f, indent=2)
 
 
@@ -108,7 +119,7 @@ class PointNet2(nn.Module):
             PointnetSAModule(
                 mlp=[256, 256, 512, 1024],
                 # bn=False,
-                use_xyz=self.use_xyz
+                use_xyz=self.use_xyz,
             )
         )
 
@@ -118,7 +129,7 @@ class PointNet2(nn.Module):
             nn.Linear(512, 256),
             nn.LeakyReLU(True),
             nn.Linear(256, 256),
-            nn.Tanh()
+            nn.Tanh(),
         )
 
     def _break_up_pc(self, pc):
@@ -129,15 +140,15 @@ class PointNet2(nn.Module):
 
     def forward(self, pointcloud):
         r"""
-            Forward pass of the network
+        Forward pass of the network
 
-            Parameters
-            ----------
-            pointcloud: Variable(torch.cuda.FloatTensor)
-                (B, N, 3 + input_channels) tensor
-                Point cloud to run predicts on
-                Each point in the point-cloud MUST
-                be formated as (x, y, z, features...)
+        Parameters
+        ----------
+        pointcloud: Variable(torch.cuda.FloatTensor)
+            (B, N, 3 + input_channels) tensor
+            Point cloud to run predicts on
+            Each point in the point-cloud MUST
+            be formated as (x, y, z, features...)
         """
         xyz, features = self._break_up_pc(pointcloud)
 
@@ -150,7 +161,7 @@ class PointNet2(nn.Module):
 class EncoderPointNet(nn.Module):
     def __init__(self, n_filters=(128, 256, 512, 1024), bn=True):
         super(EncoderPointNet, self).__init__()
-        self.n_filters = list(n_filters) #  + [latent_dim]
+        self.n_filters = list(n_filters)  #  + [latent_dim]
         # self.latent_dim = latent_dim
 
         model = []
@@ -170,10 +181,7 @@ class EncoderPointNet(nn.Module):
         self.model = nn.Sequential(*model)
 
         self.fc_layer = nn.Sequential(
-            nn.Linear(1024, 512),
-            nn.LeakyReLU(True),
-            nn.Linear(512, 256),
-            nn.Tanh()
+            nn.Linear(1024, 512), nn.LeakyReLU(True), nn.Linear(512, 256), nn.Tanh()
         )
 
     def forward(self, x):
@@ -197,8 +205,12 @@ class TrainAgent(BaseAgent):
 
     def set_optimizer(self, config):
         """set optimizer and lr scheduler used in training"""
-        self.optimizer = torch.optim.Adam(self.net.parameters(), config.lr) # , betas=(config.beta1, 0.9))
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, config.lr_step_size)
+        self.optimizer = torch.optim.Adam(
+            self.net.parameters(), config.lr
+        )  # , betas=(config.beta1, 0.9))
+        self.scheduler = torch.optim.lr_scheduler.StepLR(
+            self.optimizer, config.lr_step_size
+        )
 
     def forward(self, data):
         points = data["points"].cuda()
@@ -211,16 +223,16 @@ class TrainAgent(BaseAgent):
 
 
 def read_ply(path, with_normal=False):
-    with open(path, 'rb') as f:
+    with open(path, "rb") as f:
         plydata = PlyData.read(f)
-        x = np.array(plydata['vertex']['x'])
-        y = np.array(plydata['vertex']['y'])
-        z = np.array(plydata['vertex']['z'])
+        x = np.array(plydata["vertex"]["x"])
+        y = np.array(plydata["vertex"]["y"])
+        z = np.array(plydata["vertex"]["z"])
         vertex = np.stack([x, y, z], axis=1)
         if with_normal:
-            nx = np.array(plydata['vertex']['nx'])
-            ny = np.array(plydata['vertex']['ny'])
-            nz = np.array(plydata['vertex']['nz'])
+            nx = np.array(plydata["vertex"]["nx"])
+            ny = np.array(plydata["vertex"]["ny"])
+            nz = np.array(plydata["vertex"]["nz"])
             normals = np.stack([nx, ny, nz], axis=1)
     if with_normal:
         return np.concatenate([vertex, normals], axis=1)
@@ -240,14 +252,14 @@ class ShapeCodesDataset(Dataset):
         with open(self.path, "r") as fp:
             self.all_data = json.load(fp)[phase]
 
-        with h5py.File(self.data_root, 'r') as fp:
+        with h5py.File(self.data_root, "r") as fp:
             self.zs = fp["{}_zs".format(phase)][:]
 
         self.noise = config.noise
 
     def __getitem__(self, index):
         data_id = self.all_data[index]
-        pc_path = os.path.join(self.pc_root, data_id + '.ply')
+        pc_path = os.path.join(self.pc_root, data_id + ".ply")
         if not os.path.exists(pc_path):
             return self.__getitem__(index + 1)
         pc_n = read_ply(pc_path, with_normal=True)
@@ -267,26 +279,60 @@ class ShapeCodesDataset(Dataset):
 
 
 def get_dataloader(phase, config, shuffle=None):
-    is_shuffle = phase == 'train' if shuffle is None else shuffle
+    is_shuffle = phase == "train" if shuffle is None else shuffle
 
     dataset = ShapeCodesDataset(phase, config)
-    dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=is_shuffle, num_workers=config.num_workers)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=config.batch_size,
+        shuffle=is_shuffle,
+        num_workers=config.num_workers,
+    )
     return dataloader
 
 
 parser = argparse.ArgumentParser()
 # parser.add_argument('--proj_dir', type=str, default="/mnt/disk6/wurundi/cad_gen",
 #                    help="path to project folder where models and logs will be saved")
-parser.add_argument('--proj_dir', type=str, default="/home/rundi/project_log/cad_gen",
-                   help="path to project folder where models and logs will be saved")
-parser.add_argument('--exp_name', type=str, required=True, help="name of this experiment")
-parser.add_argument('--ae_ckpt', type=str, required=True, help="desired checkpoint to restore")
-parser.add_argument('--continue', dest='cont', action='store_true', help="continue training from checkpoint")
-parser.add_argument('--ckpt', type=str, default='latest', required=False, help="desired checkpoint to restore")
-parser.add_argument('--test',action='store_true', help="test mode")
-parser.add_argument('--n_samples', type=int, default=100, help="number of samples to generate when testing")
-parser.add_argument('-g', '--gpu_ids', type=str, default="0",
-                   help="gpu to use, e.g. 0  0,1,2. CPU not supported.")
+parser.add_argument(
+    "--proj_dir",
+    type=str,
+    default="/home/rundi/project_log/cad_gen",
+    help="path to project folder where models and logs will be saved",
+)
+parser.add_argument(
+    "--exp_name", type=str, required=True, help="name of this experiment"
+)
+parser.add_argument(
+    "--ae_ckpt", type=str, required=True, help="desired checkpoint to restore"
+)
+parser.add_argument(
+    "--continue",
+    dest="cont",
+    action="store_true",
+    help="continue training from checkpoint",
+)
+parser.add_argument(
+    "--ckpt",
+    type=str,
+    default="latest",
+    required=False,
+    help="desired checkpoint to restore",
+)
+parser.add_argument("--test", action="store_true", help="test mode")
+parser.add_argument(
+    "--n_samples",
+    type=int,
+    default=100,
+    help="number of samples to generate when testing",
+)
+parser.add_argument(
+    "-g",
+    "--gpu_ids",
+    type=str,
+    default="0",
+    help="gpu to use, e.g. 0  0,1,2. CPU not supported.",
+)
 args = parser.parse_args()
 
 if args.gpu_ids is not None:
@@ -304,8 +350,8 @@ if not args.test:
         #     g['lr'] = 1e-5
 
     # create dataloader
-    train_loader = get_dataloader('train', cfg)
-    val_loader = get_dataloader('validation', cfg)
+    train_loader = get_dataloader("train", cfg)
+    val_loader = get_dataloader("validation", cfg)
     val_loader = cycle(val_loader)
 
     # start training
@@ -334,15 +380,17 @@ if not args.test:
             agent.save_ckpt()
 
         # if clock.epoch % 10 == 0:
-        agent.save_ckpt('latest')
+        agent.save_ckpt("latest")
 else:
     # load trained weights
     agent.load_ckpt(args.ckpt)
 
-    test_loader = get_dataloader('test', cfg)
+    test_loader = get_dataloader("test", cfg)
 
     # save_dir = os.path.join(cfg.exp_dir, "results/fake_z_ckpt{}_num{}_pc".format(args.ckpt, args.n_samples))
-    save_dir = os.path.join(cfg.exp_dir, "results/pc2cad_ckpt{}_num{}".format(args.ckpt, args.n_samples))
+    save_dir = os.path.join(
+        cfg.exp_dir, "results/pc2cad_ckpt{}_num{}".format(args.ckpt, args.n_samples)
+    )
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -357,8 +405,8 @@ else:
             # print(pred_z.shape)
             all_zs.append(pred_z)
 
-        all_ids.extend(data['id'])
-        pts = data['points'].detach().cpu().numpy()
+        all_ids.extend(data["id"])
+        pts = data["points"].detach().cpu().numpy()
         # for j in range(pred_z.shape[0]):
         #     save_path = os.path.join(save_dir, "{}.ply".format(data['id'][j]))
         #     write_ply(pts[j], save_path)
@@ -373,11 +421,17 @@ else:
 
     all_zs = np.concatenate(all_zs, axis=0)
     # save generated z
-    save_path = os.path.join(cfg.exp_dir, "results/pc2cad_z_ckpt{}_num{}.h5".format(args.ckpt, args.n_samples))
+    save_path = os.path.join(
+        cfg.exp_dir,
+        "results/pc2cad_z_ckpt{}_num{}.h5".format(args.ckpt, args.n_samples),
+    )
     ensure_dir(os.path.dirname(save_path))
-    with h5py.File(save_path, 'w') as fp:
+    with h5py.File(save_path, "w") as fp:
         fp.create_dataset("zs", shape=all_zs.shape, data=all_zs)
 
-    save_path = os.path.join(cfg.exp_dir, "results/pc2cad_z_ckpt{}_num{}_ids.json".format(args.ckpt, args.n_samples))
-    with open(save_path, 'w') as fp:
+    save_path = os.path.join(
+        cfg.exp_dir,
+        "results/pc2cad_z_ckpt{}_num{}_ids.json".format(args.ckpt, args.n_samples),
+    )
+    with open(save_path, "w") as fp:
         json.dump(all_ids, fp)

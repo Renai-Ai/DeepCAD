@@ -10,7 +10,10 @@ from cadlib.macro import *
 
 class TrainerAE(BaseTrainer):
     def build_net(self, cfg):
-        self.net = CADTransformer(cfg).cuda()
+        if cfg.use_cpu:
+            self.net = CADTransformer(cfg)
+        else:
+            self.net = CADTransformer(cfg).cuda()
 
     def set_optimizer(self, cfg):
         """set optimizer and lr scheduler used in training"""
@@ -18,11 +21,18 @@ class TrainerAE(BaseTrainer):
         self.scheduler = GradualWarmupScheduler(self.optimizer, 1.0, cfg.warmup_step)
 
     def set_loss_function(self):
-        self.loss_func = CADLoss(self.cfg).cuda()
+        if self.cfg.use_cpu:
+            self.loss_func = CADLoss(self.cfg)
+        else:
+            self.loss_func = CADLoss(self.cfg).cuda()
 
     def forward(self, data):
-        commands = data['command'].cuda() # (N, S)
-        args = data['args'].cuda()  # (N, S, N_ARGS)
+        if self.cfg.use_cpu:
+            commands = data["command"]
+            args = data["args"]
+        else:
+            commands = data["command"].cuda()  # (N, S)
+            args = data["args"].cuda()  # (N, S, N_ARGS)
 
         outputs = self.net(commands, args)
         loss_dict = self.loss_func(outputs)
@@ -31,8 +41,12 @@ class TrainerAE(BaseTrainer):
 
     def encode(self, data, is_batch=False):
         """encode into latent vectors"""
-        commands = data['command'].cuda()
-        args = data['args'].cuda()
+        if self.cfg.use_cpu:
+            commands = data["command"]
+            args = data["args"]
+        else:
+            commands = data["command"].cuda()
+            args = data["args"].cuda()
         if not is_batch:
             commands = commands.unsqueeze(0)
             args = args.unsqueeze(0)
@@ -46,10 +60,17 @@ class TrainerAE(BaseTrainer):
 
     def logits2vec(self, outputs, refill_pad=True, to_numpy=True):
         """network outputs (logits) to final CAD vector"""
-        out_command = torch.argmax(torch.softmax(outputs['command_logits'], dim=-1), dim=-1)  # (N, S)
-        out_args = torch.argmax(torch.softmax(outputs['args_logits'], dim=-1), dim=-1) - 1  # (N, S, N_ARGS)
-        if refill_pad: # fill all unused element to -1
-            mask = ~torch.tensor(CMD_ARGS_MASK).bool().cuda()[out_command.long()]
+        out_command = torch.argmax(
+            torch.softmax(outputs["command_logits"], dim=-1), dim=-1
+        )  # (N, S)
+        out_args = (
+            torch.argmax(torch.softmax(outputs["args_logits"], dim=-1), dim=-1) - 1
+        )  # (N, S, N_ARGS)
+        if refill_pad:  # fill all unused element to -1
+            if self.cfg.use_cpu:
+                mask = ~torch.tensor(CMD_ARGS_MASK).bool()[out_command.long()]
+            else:
+                mask = ~torch.tensor(CMD_ARGS_MASK).bool().cuda()[out_command.long()]
             out_args[mask] = -1
 
         out_cad_vec = torch.cat([out_command.unsqueeze(-1), out_args], dim=-1)
@@ -70,21 +91,28 @@ class TrainerAE(BaseTrainer):
 
         for i, data in enumerate(pbar):
             with torch.no_grad():
-                commands = data['command'].cuda()
-                args = data['args'].cuda()
+                if self.cfg.use_cpu:
+                    commands = data["command"]
+                    args = data["args"]
+                else:
+                    commands = data["command"].cuda()
+                    args = data["args"].cuda()
                 outputs = self.net(commands, args)
-                out_args = torch.argmax(torch.softmax(outputs['args_logits'], dim=-1), dim=-1) - 1
+                out_args = (
+                    torch.argmax(torch.softmax(outputs["args_logits"], dim=-1), dim=-1)
+                    - 1
+                )
                 out_args = out_args.long().detach().cpu().numpy()  # (N, S, n_args)
 
-            gt_commands = commands.squeeze(1).long().detach().cpu().numpy() # (N, S)
-            gt_args = args.squeeze(1).long().detach().cpu().numpy() # (N, S, n_args)
+            gt_commands = commands.squeeze(1).long().detach().cpu().numpy()  # (N, S)
+            gt_args = args.squeeze(1).long().detach().cpu().numpy()  # (N, S, n_args)
 
             ext_pos = np.where(gt_commands == EXT_IDX)
             line_pos = np.where(gt_commands == LINE_IDX)
             arc_pos = np.where(gt_commands == ARC_IDX)
             circle_pos = np.where(gt_commands == CIRCLE_IDX)
 
-            args_comp = (gt_args == out_args).astype(np.int)
+            args_comp = (gt_args == out_args).astype(int)
             all_ext_args_comp.append(args_comp[ext_pos][:, -N_ARGS_EXT:])
             all_line_args_comp.append(args_comp[line_pos][:, :2])
             all_arc_args_comp.append(args_comp[arc_pos][:, :4])
@@ -92,13 +120,23 @@ class TrainerAE(BaseTrainer):
 
         all_ext_args_comp = np.concatenate(all_ext_args_comp, axis=0)
         sket_plane_acc = np.mean(all_ext_args_comp[:, :N_ARGS_PLANE])
-        sket_trans_acc = np.mean(all_ext_args_comp[:, N_ARGS_PLANE:N_ARGS_PLANE+N_ARGS_TRANS])
+        sket_trans_acc = np.mean(
+            all_ext_args_comp[:, N_ARGS_PLANE : N_ARGS_PLANE + N_ARGS_TRANS]
+        )
         extent_one_acc = np.mean(all_ext_args_comp[:, -N_ARGS_EXT_PARAM])
         line_acc = np.mean(np.concatenate(all_line_args_comp, axis=0))
         arc_acc = np.mean(np.concatenate(all_arc_args_comp, axis=0))
         circle_acc = np.mean(np.concatenate(all_circle_args_comp, axis=0))
 
-        self.val_tb.add_scalars("args_acc",
-                                {"line": line_acc, "arc": arc_acc, "circle": circle_acc,
-                                 "plane": sket_plane_acc, "trans": sket_trans_acc, "extent": extent_one_acc},
-                                global_step=self.clock.epoch)
+        self.val_tb.add_scalars(
+            "args_acc",
+            {
+                "line": line_acc,
+                "arc": arc_acc,
+                "circle": circle_acc,
+                "plane": sket_plane_acc,
+                "trans": sket_trans_acc,
+                "extent": extent_one_acc,
+            },
+            global_step=self.clock.epoch,
+        )
